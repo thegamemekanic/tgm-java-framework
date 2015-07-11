@@ -1,7 +1,5 @@
 package com.thegamemekanic.framework;
 
-import java.awt.Canvas;
-import java.awt.Color;
 
 /**
  * 
@@ -16,8 +14,6 @@ public abstract class Game {
 	public final String Name;
 	private final double NSPerUpdate;
 	
-	private GameWindow _gameWindow;	// Instance of the game window, will be null if the game is ran as an applet.
-	private Canvas _gameCanvas;		// Canvas that the game is being drawn to.
 	private Thread _gameThread;		// Main thread that the game is running on.
 	private boolean _isRunning;		// The game is considered running as long as the game loop is being executed.
 	private double _nsPerDraw;		// Number of time between draws to limit how many draws happen, 0 removes this limit.
@@ -46,8 +42,6 @@ public abstract class Game {
 		Name = name;
 		NSPerUpdate = updateRate > 0 ? 1000000000.0 / (double) updateRate : 1000000000.0 / 60.0;
 		
-		_gameWindow = null;
-		_gameCanvas = null;
 		_gameThread = new Thread(new GameRunner(), Name);
 		_isRunning = false;
 		_nsPerDraw = 0.0;
@@ -58,15 +52,6 @@ public abstract class Game {
 	//=================================================================================================================
 	// Public Interface
 
-	/**
-	 * Only needs to be called when running the game as an application, not an applet.
-	 */
-	public final void createGameWindow() {
-		if(_gameWindow == null) {
-			_gameWindow = new GameWindow(this);
-		}
-	}
-	
 	/**
 	 * Begins execution of the game thread which runs the game loop.
 	 */
@@ -140,36 +125,7 @@ public abstract class Game {
 	 * Called when the game is dropping frames in order to update.
 	 */
 	protected void onRunningSlowly() { }
-	
-	
-	
-	//=================================================================================================================
-	// Accessors
-	
-	/**
-	 * Retrieve the window that the game is being drawn to. This will always be null when running the game as an applet,
-	 * or should be anyway.
-	 * 
-	 * @return The instance of the game window if it has been created. 
-	 * @see createGameWindow() to initialize the game window.
-	 */
-	public final GameWindow getGameWindow() {
-		return _gameWindow;
-	}
-	
-	/**
-	 * Singleton: Creates the game canvas if it doesn't exist.
-	 * @return The instance of the canvas that the game is drawn to.
-	 */
-	public final Canvas getGameCanvas() {
-		if(_gameCanvas == null) {
-			_gameCanvas = new Canvas();
-			_gameCanvas.setBackground(new Color(100, 149, 237, 255));
-		}
-		
-		return _gameCanvas;
-	}
-	
+
 	
 	
 	//=================================================================================================================
