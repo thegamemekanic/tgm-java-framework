@@ -2,5 +2,7 @@ applet
 heartbeat
 accessors
 mekanic
-readjust
 int
+cornflower
+vsync
+framerate

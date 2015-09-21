@@ -2,11 +2,10 @@ package com.thegamemekanic.framework;
 
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.*;
- 
+
 import static org.lwjgl.glfw.Callbacks.*;
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
-
 
 /**
  * 
@@ -19,19 +18,28 @@ public abstract class Game {
 	// Member Variables
 
 	public final String Name;
-	//private final double NSPerUpdate;
+	public final GameWindow Window;
+	private final double NSPerUpdate;
 
-	private Window _window;
-	private Thread _gameThread; // Main thread that the game is running on.
-	private boolean _isRunning; // The game is considered running as long as the game loop is being executed.
-	//private double _nsPerDraw; // Number of time between draws to limit how many draws happen, 0 removes this limit.
-	
 	private GLFWErrorCallback _errorCallback;
-	
+	private Thread _gameThread;
+	private boolean _isRunning;
+	private double _nsPerDraw;
+	private boolean _isVsyncEnabled;
 
 	// ================================================================================================================
-	// Constructor
+	// Constructors
 
+	/**
+	 * Create an instance of a game. Uses 60 updates per second as a default.
+	 * 
+	 * @param name
+	 *            - Name of the game, used as the default window title and
+	 *            thread name.
+	 */
+	public Game(String name) {
+		this(name, 60);
+	}
 
 	/**
 	 * Create an instance of a game.
@@ -39,17 +47,20 @@ public abstract class Game {
 	 * @param name
 	 *            - Name of the game, used as the default window title and
 	 *            thread name.
+	 * @param updateRate
+	 *            - Number of updates per second the game loop will attempt to
+	 *            achieve.
 	 */
-	public Game(String name) {//, int updateRate) {
+	public Game(String name, int updateRate) {
 		Name = name;
-		//NSPerUpdate = updateRate > 0 ? 1000000000.0 / (double) updateRate : 1000000000.0 / 60.0;
+		Window = new GameWindow();
+		NSPerUpdate = updateRate > 0 ? 1000000000.0 / (double) updateRate : 1000000000.0 / 60.0;
 
-		_window = new Window();
 		_gameThread = new Thread(new GameRunner(), Name);
 		_isRunning = false;
-		//_nsPerDraw = 0.0;
+		_nsPerDraw = 0.0D;
+		_isVsyncEnabled = true;
 	}
-
 
 	// ================================================================================================================
 	// Public Interface
@@ -61,10 +72,10 @@ public abstract class Game {
 		if (!_isRunning && _gameThread != null) {
 			_isRunning = true;
 
+			Window.game = this;
 			_gameThread.start();
 		}
 	}
-
 
 	/**
 	 * Stops the game thread, terminating the game loop. The thread must be
@@ -72,7 +83,7 @@ public abstract class Game {
 	 */
 	public final synchronized void stop() {
 
-		OnExiting();
+		onExiting();
 
 		if (_isRunning && _gameThread != null) {
 			_isRunning = false;
@@ -85,17 +96,38 @@ public abstract class Game {
 			}
 		}
 	}
-//
-//
-//	/**
-//	 * @param maxFramerate
-//	 *            - Limit the frame rate to prevent it from drawing as fast as
-//	 *            possible, 0 or negative values will remove the limit.
-//	 */
-//	public final void setMaxFramerate(int maxFramerate) {
-//		_nsPerDraw = maxFramerate > 0 ? 1000000000D / (double) maxFramerate : 0.0F;
-//	}
 
+	/**
+	 * Set a limit on how many frames per second can be drawn when v-sync is
+	 * disabled. To remove the limit, set it to 0.
+	 * 
+	 * @param maxFPS
+	 *            - Maximum frames that can be drawn when v-sync is disabled.
+	 */
+	public final void setMaxFPS(int maxFPS) {
+		_nsPerDraw = maxFPS > 0 ? 1000000000D / (double) maxFPS : 0.0F;
+	}
+
+	/**
+	 * Turn v-sync on or off. When enabled, the game will attempt to achieve a
+	 * framerate that matches the refresh rate of the monitor it's being
+	 * displayed on.
+	 * 
+	 * @param enable
+	 *            - True to enable v-sync, false to disable.
+	 */
+	public final void ToggleVsync(boolean enable) {
+
+		_isVsyncEnabled = enable;
+
+		if (enable) {
+			glfwMakeContextCurrent(Window.getHandle());
+			glfwSwapInterval(1);
+		} else {
+			glfwMakeContextCurrent(Window.getHandle());
+			glfwSwapInterval(0);
+		}
+	}
 
 	// ================================================================================================================
 	// Customizable methods
@@ -106,32 +138,23 @@ public abstract class Game {
 	 */
 	protected abstract void initialize();
 
-
 	/**
 	 * This is where all game logic should be updated, process user input,
 	 * updating game state, update physics, etc.
 	 */
 	protected abstract void update();
 
-
 	/**
 	 * Called as frequently as possible unless limited by changing the game
 	 * settings to <code>setMaxFramerate()</code>.
-	 * 
-	 * @param delta
-	 *            - Difference in time from when the update should have been
-	 *            called, and when it actually was, guaranteed to be between 0
-	 *            and 1.
 	 */
-	protected abstract void render(float delta);
-
+	protected abstract void render();
 
 	/**
 	 * Called as the game is being closed.
 	 */
-	protected void OnExiting() {
+	protected void onExiting() {
 	}
-
 
 	/**
 	 * Called when the game gains focus.
@@ -139,41 +162,16 @@ public abstract class Game {
 	protected void onActivated() {
 	}
 
-
 	/**
 	 * Called when the game loses focus.
 	 */
 	protected void onDeactivated() {
 	}
 
-
 	/**
 	 * Called when the game is dropping frames in order to update.
 	 */
 	protected void onRunningSlowly() {
-	}
-	
-
-	// ================================================================================================================
-	// Package Access Methods
-
-	/**
-	 * I hate this method, but it's the only way (I can think of currently) to
-	 * call the onActivate method from the game window without people extending
-	 * the game class to be able to call it.
-	 */
-	final void activate() {
-		onActivated();
-	}
-
-
-	/**
-	 * I hate this method, but it's the only way (I can think of currently) to
-	 * call the onDeactivate method from the game window without people
-	 * extending the game class to be able to call it.
-	 */
-	final void decativate() {
-		onDeactivated();
 	}
 
 	// ================================================================================================================
@@ -190,98 +188,99 @@ public abstract class Game {
 		/**
 		 * The heartbeat of the game
 		 */
-		@Override
-		// Runnable
+		@Override // Runnable
 		public final void run() {
 
 			try {
-				
+
 				// Initialize LWJGL
 				glfwSetErrorCallback(_errorCallback = errorCallbackPrint(System.err));
-				
-				if(glfwInit() != GL11.GL_TRUE) {
+				if (glfwInit() != GL11.GL_TRUE) {
 					throw new IllegalStateException("Unable to initialize GLFW");
 				}
 
-				initialize();
-				
-				_window.Create(Name, 800, 600);
-					
-				
+				// Window Hints! I should look these up...
+				glfwDefaultWindowHints();
+				glfwWindowHint(GLFW_VISIBLE, GL_FALSE);
+				glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
+
+				// Create window.
+				Window.Create(Name, 800, 600);
+				Window.setCallbacks();
+				long windowID = Window.getHandle();
+
 				GLContext.createFromCurrent();
 				
-				glClearColor(1.0f, 0.0f, 0.0f, 0.0f);
-				
-				while(glfwWindowShouldClose(_window.getID()) == GL_FALSE) {
+				// Cornflower blue baby! Shout out to XNA!
+				glClearColor(0.39f, 0.58f, 0.93f, 0.0f); 
+
+				// Allow the game extending this class to initialize their game
+				// before starting the loop
+				initialize();
+
+				double delta = 0.0D;
+				double drawDelta = 0.0D;
+				long currTime = System.nanoTime();
+				long lastTime = System.nanoTime();
+				long elapsedTime = 0;
+				int updates = 0, renders = 0;
+
+				// The Game Loop!
+				while (glfwWindowShouldClose(windowID) == GL_FALSE) {
 					glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-					
-					glfwSwapBuffers(_window.getID());
-					
+
+					currTime = System.nanoTime();
+					delta += (currTime - lastTime) / NSPerUpdate;
+					drawDelta += _nsPerDraw > 0 ? (currTime - lastTime) / _nsPerDraw : 0;
+					elapsedTime += currTime - lastTime;
+					lastTime = currTime;
+
+					// If the delta is greater than 2, frames will start
+					// dropping and the game needs to be informed.
+					if (delta >= 2.0D) {
+						onRunningSlowly();
+					}
+
+					// Updates the game, keeping it in fixed step.
+					while (delta >= 1) {
+						update();
+
+						++updates;
+						--delta;
+					}
+
+					// Renders the game, dropping any frames the game doesn't
+					// have time for.
+					if (_isVsyncEnabled || _nsPerDraw == 0 || drawDelta > 1.0D) {
+						render();
+
+						++renders;
+						--drawDelta;
+					}
+
+					glfwSwapBuffers(windowID);
 					glfwPollEvents();
+
+					if (elapsedTime >= 1000000000) {
+						elapsedTime -= 1000000000;
+						System.out.println("Updates: " + updates + " | Draws: " + renders);
+						updates = 0;
+						renders = 0;
+					}
+
 				}
-				
-				glfwDestroyWindow(_window.getID());
-				
+
+				// Allows the game extending this class to handle what happens
+				// as a game is exiting.
+				onExiting();
+
+				Window.release();
+
 			} finally {
 				glfwTerminate();
 				_errorCallback.release();
 			}
-		
-//			long timeLast = System.nanoTime();
-//			long timeNow = System.nanoTime();
-//			long timeElapsed = 0L;
-//			double delta = 0.0;
-//			double drawDelta = 0.0;
-//
-//			int updates = 0;
-//			int draws = 0;		
 
-			// The game loop!
-//			while (_isRunning) {
-//				timeNow = System.nanoTime();
-//
-//				delta += (timeNow - timeLast) / NSPerUpdate;
-//				drawDelta += _nsPerDraw > 0 ? (timeNow - timeLast) / _nsPerDraw : 0;
-//
-//				timeElapsed += timeNow - timeLast;
-//				timeLast = timeNow;
-//
-//				// If the delta value ever exceeds 2, then it will be dropping
-//				// frames to compensate, let the developer
-//				// handle what should happen when the game is falling behind.
-//				if (delta >= 2.0F) {
-//					onRunningSlowly(); // TODO: TGM - Should I pass the delta
-//										// value in so they know how bad it is?
-//				}
-//
-//				// Will update to meet the desired update rate
-//				while (delta >= 1) {
-//					update();
-//
-//					--delta;
-//					++updates;
-//				}
-//
-//				// Keeps drawing calls limited unless otherwise specified. Draws
-//				// can and will be dropped if needed.
-//				if (_nsPerDraw == 0 || drawDelta >= 1) {
-//					render((float) delta);
-//
-//					++draws;
-//					drawDelta = 0;
-//				}
-//
-//				// TODO: TGM - Delete this, temporary! This is executed every
-//				// second to display the update and frame rate.
-//				if (timeElapsed >= 1000000000) {
-//					timeElapsed -= 1000000000;
-//
-//					System.out.println("[" + _gameThread.getName() + "][" + _gameThread.getId() + "] Updates: " + updates + ", Draws: " + draws);
-//					updates = 0;
-//					draws = 0;
-//				}
-//
-//			}
 		}
 
 	} // END GameRunner
